@@ -1,0 +1,164 @@
+// College Timetable Management System - Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Teacher {
+  id              String   @id @default(cuid())
+  name            String
+  email           String?  @unique
+  department      String?
+  employeeId      String?  @unique
+  designation     String?  // Professor / Associate Professor / Assistant Professor / Lecturer
+  maxHoursPerWeek Int      @default(16)
+  minHoursPerWeek Int      @default(8)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  assignments   TeacherAssignment[]
+  slots         TimetableSlot[]
+  availability  TeacherAvailability[]
+}
+
+model Subject {
+  id               String   @id @default(cuid())
+  name             String
+  code             String   @unique
+  department       String?
+  credits          Int      @default(4)        // college credit hours
+  weeklyHours      Int      @default(3)        // contact hours per week
+  durationMinutes  Int      @default(50)
+  difficulty       String   @default("medium") // easy | medium | hard
+  sessionType      String   @default("theory") // theory | lab | tutorial
+  requiresRoomType String?  // lecture | lab | computer | seminar
+  isElective       Boolean  @default(false)
+  electiveGroupId  String?
+  batchSize        Int      @default(0)  // 0 = whole class; >0 = max students per batch
+  color            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  assignments TeacherAssignment[]
+  slots       TimetableSlot[]
+}
+
+model Class {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  program   String   // e.g., "B.Tech", "M.Tech", "BCA", "MCA", "B.Sc"
+  department String? // e.g., "Computer Science & Engineering"
+  year      Int      @default(1)         // 1, 2, 3, 4
+  semester  Int      @default(1)         // 1, 2 (per year)
+  section   String   // A, B, C
+  capacity  Int      @default(60)
+  room      String?  // default home room
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments TeacherAssignment[] @relation("ClassAssignments")
+  timetables  Timetable[]         @relation("ClassTimetables")
+  slots       TimetableSlot[]     @relation("ClassSlots")
+}
+
+model Room {
+  id        String   @id @default(cuid())
+  name      String   @unique  // e.g., "LH-101", "CS-Lab-1"
+  type      String   @default("lecture") // lecture | lab | computer | seminar
+  capacity  Int      @default(60)
+  building  String?
+  floor     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slots TimetableSlot[]
+}
+
+// Teacher unavailable slots (day + period blocked)
+model TeacherAvailability {
+  id        String   @id @default(cuid())
+  teacherId String
+  day       String   // monday..saturday
+  period    Int      // 1..N
+  reason    String?  // "Research", "Office hours", "Leave"
+  createdAt DateTime @default(now())
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, day, period])
+  @@index([teacherId])
+}
+
+model TeacherAssignment {
+  id        String   @id @default(cuid())
+  teacherId String
+  subjectId String
+  classId   String
+  batchIndex Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  class   Class   @relation("ClassAssignments", fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId, classId, batchIndex])
+}
+
+model Timetable {
+  id          String   @id @default(cuid())
+  name        String
+  classId     String?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  class Class?          @relation("ClassTimetables", fields: [classId], references: [id], onDelete: Cascade)
+  slots TimetableSlot[]
+
+  @@index([classId])
+}
+
+model TimetableSlot {
+  id            String   @id @default(cuid())
+  timetableId   String
+  day           String
+  period        Int
+  startTime     String
+  endTime       String
+  teacherId     String?
+  subjectId     String?
+  classId       String?
+  roomId        String?
+  batchLabel    String?
+  isBreak       Boolean  @default(false)
+  breakLabel    String?
+  isElective    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  timetable Timetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  teacher   Teacher?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  subject   Subject?  @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  class     Class?    @relation("ClassSlots", fields: [classId], references: [id], onDelete: SetNull)
+  room      Room?     @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  @@unique([timetableId, day, period, classId, batchLabel])
+  @@index([timetableId, day])
+  @@index([roomId, day, period])
+}
+
+model Setting {
+  id        String   @id @default("singleton")
+  collegeName    String?
+  department     String?
+  academicYear   String?
+  logoData       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
